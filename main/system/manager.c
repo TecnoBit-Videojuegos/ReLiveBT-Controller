@@ -487,33 +487,51 @@ static void touch_pwr_btn_hdl(void) {
    Consola prendida: brillo fijo.
    Consola en standby: efecto de "respiracion" (sube y baja suave, en
    loop, con una onda seno). Usa sys_mgr_get_power() -- el mismo chequeo
-   de GPIO39 que ya existe -- asi que no hace falta leer nada nuevo. */
-#define STATUS_LED_BREATHE_PERIOD_MS 3000   /* duracion de un ciclo completo */
+   de GPIO39 que ya existe -- asi que no hace falta leer nada nuevo.
+
+   La onda de respiracion corre siempre en el fondo, prendida o no, y el
+   brillo real nunca salta de golpe -- siempre se acerca de a poco hacia
+   el objetivo (maximo fijo si esta prendida, el punto actual de la ola
+   si esta en standby). Asi, al prender o apagar, el LED hace un cruce
+   suave en vez de un salto brusco de un estado al otro. */
+#define STATUS_LED_BREATHE_PERIOD_MS 4000   /* duracion de un ciclo completo (un poco mas lento) */
 #define STATUS_LED_MAX_DUTY 8191            /* resolucion de 13 bits */
+#define STATUS_LED_FADE_MS 400              /* duracion del cruce suave entre estados */
+#define STATUS_LED_FADE_STEP (STATUS_LED_MAX_DUTY * 10 / STATUS_LED_FADE_MS)  /* avance max por tick de 10ms */
 
 static void status_led_hdl(void) {
     static uint32_t phase_ms = 0;
+    static int32_t current_duty = 0;
+    int32_t target_duty;
 
-    if (sys_mgr_get_power()) {
-        /* Prendida: fijo */
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, STATUS_LED_MAX_DUTY);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
+    /* La onda de respiracion sigue corriendo siempre, prendida o no */
+    float angle = (2.0f * (float)M_PI * (float)phase_ms) / (float)STATUS_LED_BREATHE_PERIOD_MS;
+    float level = (sinf(angle) + 1.0f) / 2.0f;   /* 0.0 a 1.0 */
+    uint32_t breathe_duty = (uint32_t)(level * STATUS_LED_MAX_DUTY);
+
+    phase_ms += 10;   /* sys_mgr_task corre cada 10ms */
+    if (phase_ms >= STATUS_LED_BREATHE_PERIOD_MS) {
         phase_ms = 0;
     }
-    else {
-        /* Standby: respiracion */
-        float angle = (2.0f * (float)M_PI * (float)phase_ms) / (float)STATUS_LED_BREATHE_PERIOD_MS;
-        float level = (sinf(angle) + 1.0f) / 2.0f;   /* 0.0 a 1.0 */
-        uint32_t duty = (uint32_t)(level * STATUS_LED_MAX_DUTY);
 
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, duty);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
+    target_duty = sys_mgr_get_power() ? STATUS_LED_MAX_DUTY : (int32_t)breathe_duty;
 
-        phase_ms += 10;   /* sys_mgr_task corre cada 10ms */
-        if (phase_ms >= STATUS_LED_BREATHE_PERIOD_MS) {
-            phase_ms = 0;
+    /* Acercar el brillo real al objetivo de a poco, nunca de golpe */
+    if (current_duty < target_duty) {
+        current_duty += STATUS_LED_FADE_STEP;
+        if (current_duty > target_duty) {
+            current_duty = target_duty;
         }
     }
+    else if (current_duty > target_duty) {
+        current_duty -= STATUS_LED_FADE_STEP;
+        if (current_duty < target_duty) {
+            current_duty = target_duty;
+        }
+    }
+
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, current_duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
 }
 
 static void sys_mgr_task(void *arg) {
