@@ -11,6 +11,7 @@
 #include <esp_partition.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 #include <soc/efuse_reg.h>
 #include "driver/gpio.h"
 #include "hal/ledc_hal.h"
@@ -40,6 +41,8 @@
 #define POWER_OFF_ALT_PIN 12
 
 #define PIEZO_PIN 18
+
+#define TOUCH_PWR_PIN 22
 
 #define SENSE_P1_PIN 35
 #define SENSE_P2_PIN 36
@@ -441,6 +444,42 @@ static void boot_btn_hdl(void) {
     }
 }
 
+/* Boton touch (TTP223, salida momentanea) para Power, montado en el case.
+   Toque corto con la consola apagada: prende.
+   Mantenido 2.5s con la consola prendida: apaga.
+   Mismo patron que check_home_btn_hold() del mando, pero para este boton
+   fisico dedicado del gabinete. */
+#define TOUCH_PWR_HOLD_US (2500 * 1000)   /* 2.5 segundos para apagar */
+
+static void touch_pwr_btn_hdl(void) {
+    static int64_t press_start = 0;
+    static bool triggered = false;
+    bool pressed = gpio_get_level(TOUCH_PWR_PIN);
+
+    if (pressed) {
+        if (press_start == 0) {
+            press_start = esp_timer_get_time();
+            triggered = false;
+
+            /* Toque corto con la consola apagada: prender */
+            if (!sys_mgr_get_power()) {
+                triggered = true;
+                sys_mgr_power_on();
+            }
+        }
+        else if (!triggered && sys_mgr_get_power() &&
+                 (esp_timer_get_time() - press_start) >= TOUCH_PWR_HOLD_US) {
+            /* Mantenido 2.5s con la consola prendida: apagar */
+            triggered = true;
+            sys_mgr_power_off();
+        }
+    }
+    else {
+        press_start = 0;
+        triggered = false;
+    }
+}
+
 static void sys_mgr_task(void *arg) {
     uint32_t cnt = 0;
     uint8_t *cmd;
@@ -448,6 +487,7 @@ static void sys_mgr_task(void *arg) {
 
     while (1) {
         boot_btn_hdl();
+        touch_pwr_btn_hdl();
 
         /* Fetch system cmd to execute */
         if (cmd_q_hdl) {
@@ -617,6 +657,14 @@ void sys_mgr_init(uint32_t package) {
 
     io_conf.pin_bit_mask = 1ULL << BOOT_BTN_PIN;
     gpio_config(&io_conf);
+
+    /* Boton touch de Power (TTP223, salida momentanea, sin pull
+       necesario porque el modulo maneja activamente los dos niveles). */
+    io_conf.pin_bit_mask = 1ULL << TOUCH_PWR_PIN;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    gpio_config(&io_conf);
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
 
     chip_package = package;
     err_led_pin = err_led_get_pin();
