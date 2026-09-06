@@ -11,6 +11,7 @@
 #include <esp_partition.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <math.h>
 #include <esp_timer.h>
 #include <soc/efuse_reg.h>
 #include "driver/gpio.h"
@@ -43,6 +44,8 @@
 #define PIEZO_PIN 18
 
 #define TOUCH_PWR_PIN 22
+
+#define STATUS_LED_PIN 21
 
 #define SENSE_P1_PIN 35
 #define SENSE_P2_PIN 36
@@ -454,7 +457,7 @@ static void boot_btn_hdl(void) {
 static void touch_pwr_btn_hdl(void) {
     static int64_t press_start = 0;
     static bool triggered = false;
-    bool pressed = gpio_get_level(TOUCH_PWR_PIN);
+    bool pressed = !gpio_get_level(TOUCH_PWR_PIN);
 
     if (pressed) {
         if (press_start == 0) {
@@ -480,6 +483,39 @@ static void touch_pwr_btn_hdl(void) {
     }
 }
 
+/* LED de estado en la parte frontal del case.
+   Consola prendida: brillo fijo.
+   Consola en standby: efecto de "respiracion" (sube y baja suave, en
+   loop, con una onda seno). Usa sys_mgr_get_power() -- el mismo chequeo
+   de GPIO39 que ya existe -- asi que no hace falta leer nada nuevo. */
+#define STATUS_LED_BREATHE_PERIOD_MS 3000   /* duracion de un ciclo completo */
+#define STATUS_LED_MAX_DUTY 8191            /* resolucion de 13 bits */
+
+static void status_led_hdl(void) {
+    static uint32_t phase_ms = 0;
+
+    if (sys_mgr_get_power()) {
+        /* Prendida: fijo */
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, STATUS_LED_MAX_DUTY);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
+        phase_ms = 0;
+    }
+    else {
+        /* Standby: respiracion */
+        float angle = (2.0f * (float)M_PI * (float)phase_ms) / (float)STATUS_LED_BREATHE_PERIOD_MS;
+        float level = (sinf(angle) + 1.0f) / 2.0f;   /* 0.0 a 1.0 */
+        uint32_t duty = (uint32_t)(level * STATUS_LED_MAX_DUTY);
+
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, duty);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
+
+        phase_ms += 10;   /* sys_mgr_task corre cada 10ms */
+        if (phase_ms >= STATUS_LED_BREATHE_PERIOD_MS) {
+            phase_ms = 0;
+        }
+    }
+}
+
 static void sys_mgr_task(void *arg) {
     uint32_t cnt = 0;
     uint8_t *cmd;
@@ -488,6 +524,7 @@ static void sys_mgr_task(void *arg) {
     while (1) {
         boot_btn_hdl();
         touch_pwr_btn_hdl();
+        status_led_hdl();
 
         /* Fetch system cmd to execute */
         if (cmd_q_hdl) {
@@ -706,6 +743,26 @@ void sys_mgr_init(uint32_t package) {
     };
     ledc_timer_config(&piezo_timer);
     ledc_channel_config(&piezo_channel);
+
+    /* Timer y canal propios para el LED de estado (respiracion en
+       standby / fijo prendida), separados de todo lo demas. */
+    ledc_timer_config_t status_led_timer = {
+        .duty_resolution = LEDC_TIMER_13_BIT,
+        .freq_hz = 5000,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .timer_num = LEDC_TIMER_3,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    ledc_channel_config_t status_led_channel = {
+        .channel    = LEDC_CHANNEL_4,
+        .duty       = 0,
+        .gpio_num   = STATUS_LED_PIN,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .hpoint     = 0,
+        .timer_sel  = LEDC_TIMER_3,
+    };
+    ledc_timer_config(&status_led_timer);
+    ledc_channel_config(&status_led_channel);
 
     while (wired_adapter.system_id <= WIRED_AUTO) {
         boot_btn_hdl();
