@@ -30,6 +30,7 @@
 #include "system/led.h"
 #include "bare_metal_app_cpu.h"
 #include "manager.h"
+#include "display_bridge.h"
 
 #define BOOT_BTN_PIN 0
 
@@ -87,6 +88,11 @@ static uint16_t port_state = 0;
 static RingbufHandle_t cmd_q_hdl = NULL;
 static uint32_t chip_package = EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ6;
 static bool factory_reset = false;
+
+/* Ultimo estado de LED enviado por puerto a la pantalla externa (0xFF
+   fuerza el envio del primer estado real). Solo se usa cuando el
+   sistema activo es la GameCube modificada -- ver set_port_led(). */
+static uint8_t last_led_state[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 
 static int32_t sys_mgr_get_power(void);
 static int32_t sys_mgr_get_boot_btn(void);
@@ -165,6 +171,14 @@ static inline void set_port_led(uint32_t index, uint32_t state) {
     }
     else {
         esp_rom_gpio_connect_out_signal(led_list[index], ledc_periph_signal[LEDC_LOW_SPEED_MODE].sig_out0_idx + LEDC_CHANNEL_2, 0, 0);
+    }
+
+    /* Solo notifica al display en la GameCube modificada -- en cualquier
+       otro sistema (Genesis, N64, PSX, etc.) esta funcion se comporta
+       exactamente igual que antes, sin efecto alguno. */
+    if (wired_adapter.system_id == GC && index < 4 && last_led_state[index] != (uint8_t)state) {
+        last_led_state[index] = (uint8_t)state;
+        display_bridge_send_gamepad_status((uint8_t)index, (uint8_t)state);
     }
 }
 
