@@ -15,6 +15,12 @@
  *
  * Formato enviado por UART: el hash en texto + salto de linea.
  * Ejemplo: "06F64606FD31A657\n"
+ *
+ * Tambien expone display_bridge_send_gamepad_status(), llamada desde
+ * sys_mgr (manager.c) cada vez que cambia el LED de un puerto, SOLO
+ * cuando el sistema activo es la GameCube modificada. Reusa el mismo
+ * UART_NUM_1 ya instalado aca, protegido por el mutex interno del
+ * driver de UART de ESP-IDF -- es seguro llamarlo desde otra tarea.
  */
 
 #include <stdio.h>
@@ -24,6 +30,7 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "adapter/gameid.h"
+#include "display_bridge.h"
 
 #define DISPLAY_UART_PORT   UART_NUM_1
 #define DISPLAY_UART_TX_PIN 25   /* GPIO25 - confirmado libre en el esquema del usuario */
@@ -64,6 +71,14 @@ static void display_bridge_task(void *arg) {
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
+}
+
+void display_bridge_send_gamepad_status(uint8_t port, uint8_t connected) {
+    char line[16];
+    int len = snprintf(line, sizeof(line), "GP:%u,%u\n", port, connected ? 1 : 0);
+    uart_write_bytes(DISPLAY_UART_PORT, line, len);
+
+    printf("[display_bridge] Gamepad P%u: %s\n", port + 1, connected ? "conectado" : "desconectado");
 }
 
 void display_bridge_init(void) {
