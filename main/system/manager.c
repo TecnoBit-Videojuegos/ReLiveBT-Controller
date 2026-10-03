@@ -44,9 +44,9 @@
 
 #define PIEZO_PIN 18
 
-#define TOUCH_PWR_PIN 22
+#define TOUCH_PWR_PIN 21
 
-#define STATUS_LED_PIN 21
+#define STATUS_LED_PIN 22
 
 #define SENSE_P1_PIN 35
 #define SENSE_P2_PIN 36
