@@ -32,7 +32,7 @@
 #include "manager.h"
 #include "display_bridge.h"
 
-#define BOOT_BTN_PIN 0
+#define BOOT_BTN_PIN 23
 
 #define RESET_PIN 14
 
