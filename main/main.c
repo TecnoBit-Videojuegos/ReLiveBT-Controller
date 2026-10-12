@@ -152,7 +152,9 @@ static void wl_init_task(void *arg) {
 void app_main()
 {
     adapter_init();
-    display_bridge_init();
+#ifdef CONFIG_BLUERETRO_SGC
+    display_bridge_init();  /* Pantalla UART (GPIO25): solo en Sleek GameCube */
+#endif
 
     start_app_cpu(wired_init_task);
     xTaskCreatePinnedToCore(wl_init_task, "wl_init_task", 2560, NULL, 10, NULL, 0);
