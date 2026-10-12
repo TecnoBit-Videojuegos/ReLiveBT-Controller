@@ -98,7 +98,9 @@ static bool factory_reset = false;
 /* Ultimo estado de LED enviado por puerto a la pantalla externa (0xFF
    fuerza el envio del primer estado real). Solo se usa cuando el
    sistema activo es la GameCube modificada -- ver set_port_led(). */
+#ifdef CONFIG_BLUERETRO_SGC
 static uint8_t last_led_state[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+#endif
 
 static int32_t sys_mgr_get_power(void);
 static int32_t sys_mgr_get_boot_btn(void);
@@ -182,10 +184,12 @@ static inline void set_port_led(uint32_t index, uint32_t state) {
     /* Solo notifica al display en la GameCube modificada -- en cualquier
        otro sistema (Genesis, N64, PSX, etc.) esta funcion se comporta
        exactamente igual que antes, sin efecto alguno. */
+#ifdef CONFIG_BLUERETRO_SGC
     if (wired_adapter.system_id == GC && index < 4 && last_led_state[index] != (uint8_t)state) {
         last_led_state[index] = (uint8_t)state;
         display_bridge_send_gamepad_status((uint8_t)index, (uint8_t)state);
     }
+#endif
 }
 
 static inline uint32_t get_port_led_pin(uint32_t index) {
