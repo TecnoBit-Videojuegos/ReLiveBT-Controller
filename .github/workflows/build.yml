@@ -5,18 +5,20 @@ on:
   pull_request:
     branches: [ master ]
   workflow_dispatch:
+
 jobs:
   build:
-    if: ${{ (github.repository == 'darthcloud/BlueRetro') || (github.event_name == 'workflow_dispatch') }}
     strategy:
+      # Si una consola falla, las demas igual terminan de compilar
+      fail-fast: false
       matrix:
         hw_version: [hw2]
-        br_config: [playstation]
+        # Para agregar otra consola, solo anade su nombre a esta lista
+        # (debe existir en configs/hw2/). Ejemplo: [gamecube, n64, playstation, snes]
+        br_config: [gamecube, n64, playstation]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/darthcloud/idf-blueretro:v5.5.0_2024-12-02
-    outputs:
-      br_version: ${{ env.br_version }}
     steps:
     - name: Checkout repo
       uses: actions/checkout@v4
@@ -48,4 +50,3 @@ jobs:
           build/ota/ota_data_initial.bin
           build/BlueRetro*.bin
         if-no-files-found: error
- 
