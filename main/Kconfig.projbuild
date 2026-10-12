@@ -130,6 +130,14 @@ menu "BlueRetro"
 
     endchoice
 
+    config BLUERETRO_SGC
+        bool "SGC (Sleek GameCube: boton touch + LED de estado)"
+        depends on BLUERETRO_SYSTEM_GC
+        default n
+        help
+            Activa el boton touch de power y el LED de estado del proyecto
+            Sleek GameCube. Dejar apagado para GameCube normal.
+
     menu "Debug"
 
         config BLUERETRO_QEMU
