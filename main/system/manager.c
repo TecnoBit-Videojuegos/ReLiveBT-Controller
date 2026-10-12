@@ -32,7 +32,13 @@
 #include "manager.h"
 #include "display_bridge.h"
 
+/* Boton extra: GPIO23 solo en PlayStation (PS1/PS2). En el resto de las
+   consolas se usa GPIO0 (boton BOOT original de BlueRetro). */
+#ifdef CONFIG_BLUERETRO_SYSTEM_PSX_PS2
 #define BOOT_BTN_PIN 23
+#else
+#define BOOT_BTN_PIN 0
+#endif
 
 #define RESET_PIN 14
 
@@ -461,6 +467,7 @@ static void boot_btn_hdl(void) {
     }
 }
 
+#ifdef CONFIG_BLUERETRO_SGC
 /* Boton touch (TTP223, salida momentanea) para Power, montado en el case.
    Toque corto con la consola apagada: prende.
    Mantenido 2.5s con la consola prendida: apaga.
@@ -547,6 +554,7 @@ static void status_led_hdl(void) {
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4, current_duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_4);
 }
+#endif /* CONFIG_BLUERETRO_SGC */
 
 static void sys_mgr_task(void *arg) {
     uint32_t cnt = 0;
@@ -555,8 +563,10 @@ static void sys_mgr_task(void *arg) {
 
     while (1) {
         boot_btn_hdl();
+#ifdef CONFIG_BLUERETRO_SGC
         touch_pwr_btn_hdl();
         status_led_hdl();
+#endif
 
         /* Fetch system cmd to execute */
         if (cmd_q_hdl) {
@@ -727,6 +737,7 @@ void sys_mgr_init(uint32_t package) {
     io_conf.pin_bit_mask = 1ULL << BOOT_BTN_PIN;
     gpio_config(&io_conf);
 
+#ifdef CONFIG_BLUERETRO_SGC
     /* Boton touch de Power (TTP223, salida momentanea, sin pull
        necesario porque el modulo maneja activamente los dos niveles). */
     io_conf.pin_bit_mask = 1ULL << TOUCH_PWR_PIN;
@@ -734,6 +745,7 @@ void sys_mgr_init(uint32_t package) {
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     gpio_config(&io_conf);
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+#endif /* CONFIG_BLUERETRO_SGC */
 
     chip_package = package;
     err_led_pin = err_led_get_pin();
@@ -776,6 +788,7 @@ void sys_mgr_init(uint32_t package) {
     ledc_timer_config(&piezo_timer);
     ledc_channel_config(&piezo_channel);
 
+#ifdef CONFIG_BLUERETRO_SGC
     /* Timer y canal propios para el LED de estado (respiracion en
        standby / fijo prendida), separados de todo lo demas. */
     ledc_timer_config_t status_led_timer = {
@@ -795,6 +808,7 @@ void sys_mgr_init(uint32_t package) {
     };
     ledc_timer_config(&status_led_timer);
     ledc_channel_config(&status_led_channel);
+#endif /* CONFIG_BLUERETRO_SGC */
 
     while (wired_adapter.system_id <= WIRED_AUTO) {
         boot_btn_hdl();
