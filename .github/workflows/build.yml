@@ -15,7 +15,7 @@ jobs:
         hw_version: [hw2]
         # Para agregar otra consola, solo anade su nombre a esta lista
         # (debe existir en configs/hw2/). Ejemplo: [gamecube, n64, playstation, snes]
-        br_config: [gamecube, n64, playstation]
+        br_config: [gamecube, n64, playstation, sgc]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/darthcloud/idf-blueretro:v5.5.0_2024-12-02
